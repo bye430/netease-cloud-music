@@ -1,0 +1,20 @@
+[
+  {
+    "id": "noto-sans-sc",
+    "label": "思源黑体",
+    "family": "'Noto Sans SC', sans-serif",
+    "regular": "NotoSansSC-Regular.ttc",
+    "bold": "NotoSansSC-Bold.ttc"
+  },
+  {
+    "id": "wenquanyi",
+    "label": "文泉驿正黑",
+    "family": "'WenQuanYi Zen Hei', sans-serif",
+    "regular": "WenQuanYi-ZenHei.ttc"
+  },
+  {
+    "id": "system",
+    "label": "系统默认",
+    "family": "system-ui, -apple-system, 'Segoe UI', sans-serif"
+  }
+]

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>快捷键设置</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      padding: 20px 24px 24px;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .desc {
+      font-size: 13px;
+      color: #6e6e73;
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 4px 0;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      margin-bottom: 16px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 110px 1fr 88px;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #f0f0f2;
+    }
+
+    .row:last-child { border-bottom: none; }
+
+    .label { font-size: 14px; font-weight: 500; }
+
+    .binding {
+      min-height: 36px;
+      border: 1px solid #d2d2d7;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      background: #fafafa;
+      color: #333;
+      display: flex;
+      align-items: center;
+    }
+
+    .binding.recording {
+      border-color: #ec4141;
+      background: #fff5f5;
+      color: #ec4141;
+    }
+
+    .binding.empty { color: #999; }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      background: #ec4141;
+      color: #fff;
+    }
+
+    button.secondary {
+      background: #e8e8ed;
+      color: #1d1d1f;
+    }
+
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .status {
+      font-size: 12px;
+      color: #6e6e73;
+      min-height: 18px;
+      margin-top: 8px;
+    }
+
+    .status.ok { color: #248a3d; }
+    .status.err { color: #d70015; }
+
+    .hint {
+      font-size: 12px;
+      color: #86868b;
+      line-height: 1.6;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>系统快捷键设置</h1>
+  <p class="desc">
+    将播放控制绑定到系统级快捷键（GNOME 自定义快捷键）。先点击「录制」再按下目标按键组合。
+  </p>
+
+  <div class="card" id="rows"></div>
+
+  <div class="actions">
+    <button id="saveBtn">保存并应用</button>
+    <button class="secondary" id="clearBtn">全部清除</button>
+    <button class="secondary" id="installBtn">安装系统命令 (sudo)</button>
+    <button class="secondary" id="uninstallBtn">卸载系统命令</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <p class="hint">
+    建议先「安装系统命令」，再保存快捷键。媒体键示例：播放/暂停、下一曲、上一曲。
+    组合键示例：Ctrl+Alt+P。留空表示不绑定该项。
+  </p>
+
+  <script>
+    const ACTIONS = [
+      { key: 'playPause', label: '播放 / 暂停', placeholder: '例如 XF86AudioPlay' },
+      { key: 'next', label: '下一首', placeholder: '例如 XF86AudioNext' },
+      { key: 'prev', label: '上一首', placeholder: '例如 XF86AudioPrev' },
+    ];
+
+    const rowsEl = document.getElementById('rows');
+    const statusEl = document.getElementById('status');
+    let config = {};
+    let recordingKey = null;
+
+    const mediaKeyMap = {
+      AudioPlay: 'XF86AudioPlay',
+      AudioPause: 'XF86AudioPause',
+      AudioNext: 'XF86AudioNext',
+      AudioPrev: 'XF86AudioPrev',
+      AudioStop: 'XF86AudioStop',
+    };
+
+    function setStatus(text, type = '') {
+      statusEl.textContent = text;
+      statusEl.className = 'status ' + type;
+    }
+
+    function formatBinding(event) {
+      if (mediaKeyMap[event.key]) return mediaKeyMap[event.key];
+
+      const parts = [];
+      if (event.ctrlKey) parts.push('<Ctrl>');
+      if (event.altKey) parts.push('<Alt>');
+      if (event.shiftKey) parts.push('<Shift>');
+      if (event.metaKey) parts.push('<Super>');
+
+      const code = event.code || '';
+      if (code.startsWith('Key')) return parts.join('') + code.slice(3).toLowerCase();
+      if (code.startsWith('Digit')) return parts.join('') + code.slice(5);
+      if (code.startsWith('F') && /^F\d+$/.test(code)) return parts.join('') + code;
+      if (code === 'Space') return parts.join('') + 'space';
+      if (code === 'Enter') return parts.join('') + 'Return';
+      if (code === 'Escape') return '';
+      if (event.key && event.key.length === 1) return parts.join('') + event.key.toLowerCase();
+      return parts.join('') + (event.key || code);
+    }
+
+    function renderRows() {
+      rowsEl.innerHTML = '';
+      for (const action of ACTIONS) {
+        const row = document.createElement('div');
+        row.className = 'row';
+
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = action.label;
+
+        const binding = document.createElement('div');
+        binding.className = 'binding' + (config[action.key] ? '' : ' empty');
+        binding.dataset.key = action.key;
+        binding.textContent = config[action.key] || action.placeholder;
+
+        const recordBtn = document.createElement('button');
+        recordBtn.className = 'secondary';
+        recordBtn.textContent = '录制';
+        recordBtn.addEventListener('click', () => startRecording(action.key));
+
+        row.append(label, binding, recordBtn);
+        rowsEl.appendChild(row);
+      }
+    }
+
+    function startRecording(key) {
+      recordingKey = key;
+      renderRows();
+      const el = rowsEl.querySelector(`[data-key="${key}"]`);
+      if (el) {
+        el.classList.add('recording');
+        el.textContent = '请按键… (Esc 取消)';
+      }
+      setStatus('正在录制快捷键…', '');
+    }
+
+    function stopRecording() {
+      recordingKey = null;
+      renderRows();
+    }
+
+    window.addEventListener('keydown', (event) => {
+      if (!recordingKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.code === 'Escape') {
+        stopRecording();
+        setStatus('已取消录制', '');
+        return;
+      }
+
+      if (['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return;
+
+      const binding = formatBinding(event);
+      if (!binding) return;
+
+      config[recordingKey] = binding;
+      stopRecording();
+      setStatus(`已设置: ${binding}`, 'ok');
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      setStatus('正在应用…', '');
+      try {
+        const result = await window.shortcutsApi.saveAndApply(config);
+        if (result.ok) {
+          setStatus(result.message || '已保存并应用', 'ok');
+        } else {
+          setStatus(result.message || '应用失败', 'err');
+        }
+      } catch (err) {
+        setStatus(String(err), 'err');
+      }
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      for (const action of ACTIONS) config[action.key] = '';
+      renderRows();
+      setStatus('已清除，点击「保存并应用」生效', '');
+    });
+
+    document.getElementById('installBtn').addEventListener('click', async () => {
+      setStatus('正在请求管理员权限…', '');
+      try {
+        const result = await window.shortcutsApi.installSystemCtl();
+        setStatus(result.message, result.ok ? 'ok' : 'err');
+      } catch (err) {
+        setStatus(String(err), 'err');
+      }
+    });
+
+    document.getElementById('uninstallBtn').addEventListener('click', async () => {
+      setStatus('正在请求管理员权限…', '');
+      try {
+        const result = await window.shortcutsApi.uninstallSystemCtl();
+        setStatus(result.message, result.ok ? 'ok' : 'err');
+      } catch (err) {
+        setStatus(String(err), 'err');
+      }
+    });
+
+    async function init() {
+      config = await window.shortcutsApi.getConfig();
+      renderRows();
+      const status = await window.shortcutsApi.getSystemCtlStatus();
+      if (status.installed) {
+        setStatus('系统命令已安装: /usr/local/bin/netease-music-ctl', 'ok');
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

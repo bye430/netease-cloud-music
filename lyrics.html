@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>歌词</title>
+  <style>
+    @font-face {
+      font-family: 'Noto Sans SC';
+      src: url('assets/fonts/NotoSansSC-Regular.ttc') format('truetype');
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    @font-face {
+      font-family: 'Noto Sans SC';
+      src: url('assets/fonts/NotoSansSC-Bold.ttc') format('truetype');
+      font-weight: 700;
+      font-style: normal;
+    }
+
+    @font-face {
+      font-family: 'WenQuanYi Zen Hei';
+      src: url('assets/fonts/WenQuanYi-ZenHei.ttc') format('truetype');
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      user-select: none;
+    }
+
+    :root {
+      --lyric-current-size: 24px;
+      --lyric-next-size: 15px;
+      --lyric-empty-size: 16px;
+      --lyric-meta-size: 13px;
+      --lyric-gap: 6px;
+      --lyric-padding: 8px;
+      --lyric-font: 'Noto Sans SC', sans-serif;
+      --lyric-current-color: #ff6b81;
+      --lyric-next-color: rgba(255, 255, 255, 0.45);
+      --panel-opacity: 0.82;
+      --accent: #ff6b81;
+      --accent-soft: rgba(255, 107, 129, 0.18);
+    }
+
+    .panel {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      border-radius: 14px;
+      background: rgba(18, 18, 22, var(--panel-opacity));
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      backdrop-filter: blur(16px);
+      color: #fff;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      -webkit-app-region: drag;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      flex-shrink: 0;
+    }
+
+    .toolbar .meta {
+      min-width: 0;
+      flex: 1;
+      font-size: var(--lyric-meta-size);
+      font-family: var(--lyric-font);
+      color: rgba(255, 255, 255, 0.6);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 0 6px;
+    }
+
+    .toolbar .actions {
+      display: flex;
+      gap: 4px;
+      -webkit-app-region: no-drag;
+    }
+
+    .toolbar button {
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+    }
+
+    .toolbar button:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .toolbar button:active {
+      transform: scale(0.94);
+    }
+
+    .toolbar button.active,
+    .toolbar button.pinned {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .lyrics-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel.lyrics-locked {
+      overflow: hidden;
+    }
+
+    .panel.lyrics-locked .settings-panel {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 2;
+      max-height: none;
+    }
+
+    .panel.lyrics-locked .settings-panel.open {
+      height: var(--settings-panel-h);
+      padding: 8px 10px 12px;
+      border-bottom-color: rgba(255, 255, 255, 0.08);
+      box-sizing: border-box;
+    }
+
+    .panel.lyrics-locked .lyrics-body {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: var(--lyrics-body-lock-h);
+      margin-top: 0;
+      flex: none;
+      z-index: 1;
+      contain: layout style paint;
+    }
+
+    .panel.lyrics-locked .content {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .content {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: var(--lyric-gap);
+      padding: var(--lyric-padding);
+      text-align: center;
+      font-family: var(--lyric-font);
+    }
+
+    .current {
+      font-size: var(--lyric-current-size);
+      font-weight: 600;
+      line-height: 1.35;
+      color: var(--lyric-current-color);
+      text-shadow: 0 1px 10px color-mix(in srgb, var(--lyric-current-color) 30%, transparent);
+      min-height: 1.35em;
+    }
+
+    .next {
+      font-size: var(--lyric-next-size);
+      line-height: 1.35;
+      color: var(--lyric-next-color);
+      min-height: 1.35em;
+    }
+
+    .empty {
+      font-size: var(--lyric-empty-size);
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .paused .current {
+      filter: brightness(0.75);
+      text-shadow: none;
+    }
+
+    .settings-panel {
+      position: relative;
+      flex-shrink: 0;
+      overflow: hidden;
+      max-height: 0;
+      padding: 0 10px;
+      background: rgba(30, 30, 36, 0.96);
+      border-bottom: 1px solid transparent;
+      -webkit-app-region: no-drag;
+    }
+
+    .settings-panel.open {
+      max-height: none;
+      padding: 8px 10px 12px;
+      border-bottom-color: rgba(255, 255, 255, 0.08);
+      box-sizing: border-box;
+    }
+
+    .settings-panel.measuring {
+      position: absolute;
+      visibility: hidden;
+      max-height: none;
+      pointer-events: none;
+    }
+
+    .settings-close {
+      display: none;
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      z-index: 1;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+    }
+
+    .settings-panel.open .settings-close {
+      display: block;
+    }
+
+    .settings-close:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .settings-close:active {
+      transform: scale(0.94);
+    }
+
+    .settings-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .settings-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .settings-row > .row-label {
+      flex-shrink: 0;
+      width: 52px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.42);
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .font-chips {
+      display: flex;
+      flex: 1;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .font-chip {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.8);
+      border-radius: 16px;
+      padding: 5px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .font-chip:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .font-chip.selected {
+      background: var(--accent-soft);
+      border-color: rgba(255, 107, 129, 0.5);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .color-controls {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .color-field {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .color-field input[type="color"] {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .color-field input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 1px;
+    }
+
+    .color-field input[type="color"]::-webkit-color-swatch {
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+    }
+
+    .color-field span {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .opacity-control {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .opacity-control input[type="range"] {
+      flex: 1;
+      min-width: 40px;
+      height: 3px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .opacity-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+      cursor: pointer;
+    }
+
+    .opacity-value {
+      font-size: 11px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      min-width: 30px;
+      text-align: right;
+    }
+
+    .settings-actions {
+      flex: 1;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .settings-actions button {
+      border: none;
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.85);
+    }
+  </style>
+</head>
+<body>
+  <div class="panel" id="panel">
+    <div class="settings-panel" id="settingsPanel">
+      <button type="button" class="settings-close" id="closeSettingsBtn" title="关闭设置">✕</button>
+      <div class="settings-row">
+        <span class="row-label">字体</span>
+        <div class="font-chips" id="fontChips"></div>
+      </div>
+      <div class="settings-row">
+        <span class="row-label">歌词颜色</span>
+        <div class="color-controls">
+          <div class="color-field">
+            <input type="color" id="currentColor" value="#ff6b81" title="当前句" />
+            <span>当前</span>
+          </div>
+          <div class="color-field">
+            <input type="color" id="nextColor" value="#737373" title="下一句" />
+            <span>下句</span>
+          </div>
+        </div>
+      </div>
+      <div class="settings-row">
+        <span class="row-label">不透明度</span>
+        <div class="opacity-control">
+          <input type="range" id="opacityRange" min="30" max="100" value="82" title="窗口不透明度" />
+          <span class="opacity-value" id="opacityValue">82%</span>
+        </div>
+      </div>
+      <div class="settings-row">
+        <span class="row-label"></span>
+        <div class="settings-actions">
+          <button type="button" id="resetSettingsBtn">恢复默认</button>
+        </div>
+      </div>
+    </div>
+    <div class="lyrics-body" id="lyricsBody">
+      <div class="toolbar">
+        <div class="meta" id="meta">等待播放…</div>
+        <div class="actions">
+          <button id="settingsBtn" title="设置">⚙</button>
+          <button id="pinBtn" title="置顶">📌</button>
+          <button id="closeBtn" title="关闭">✕</button>
+        </div>
+      </div>
+      <div class="content" id="content">
+        <div class="empty">播放音乐后显示歌词</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const panel = document.getElementById('panel');
+    const lyricsBody = document.getElementById('lyricsBody');
+    const meta = document.getElementById('meta');
+    const content = document.getElementById('content');
+    const pinBtn = document.getElementById('pinBtn');
+    const closeBtn = document.getElementById('closeBtn');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const fontChips = document.getElementById('fontChips');
+    const currentColorInput = document.getElementById('currentColor');
+    const nextColorInput = document.getElementById('nextColor');
+    const opacityRange = document.getElementById('opacityRange');
+    const opacityValue = document.getElementById('opacityValue');
+    const resetSettingsBtn = document.getElementById('resetSettingsBtn');
+    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    const root = document.documentElement;
+
+    let fontList = [];
+    let selectedFontId = 'noto-sans-sc';
+    let currentSettings = null;
+    let lyricsBodyHeight = null;
+    let lyricScaleLocked = false;
+
+    const DEFAULT_SETTINGS = {
+      fontId: 'noto-sans-sc',
+      currentColor: '#ff6b81',
+      nextColor: 'rgba(255, 255, 255, 0.45)',
+      opacity: 0.82,
+    };
+
+    function rgbaToHex(color) {
+      if (!color) return '#ffffff';
+      if (color.startsWith('#')) return color.length === 7 ? color : '#ffffff';
+      const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (!m) return '#ffffff';
+      const hex = (n) => Number(n).toString(16).padStart(2, '0');
+      return '#' + hex(m[1]) + hex(m[2]) + hex(m[3]);
+    }
+
+    function hexToRgba(hex, alpha) {
+      const h = hex.replace('#', '');
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+    }
+
+    function getFontFamily(fontId) {
+      const font = fontList.find((f) => f.id === fontId);
+      if (font) return font.family;
+      const fallback = fontList.find((f) => f.id === DEFAULT_SETTINGS.fontId);
+      return fallback?.family || "system-ui, -apple-system, 'Segoe UI', sans-serif";
+    }
+
+    function renderFontChips() {
+      fontChips.innerHTML = '';
+      for (const font of fontList) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'font-chip' + (font.id === selectedFontId ? ' selected' : '');
+        chip.textContent = font.label;
+        chip.style.fontFamily = font.family;
+        chip.addEventListener('click', () => {
+          selectedFontId = font.id;
+          renderFontChips();
+          persistSettings(readFormSettings());
+        });
+        fontChips.appendChild(chip);
+      }
+    }
+
+    function applySettings(settings) {
+      currentSettings = { ...DEFAULT_SETTINGS, ...settings };
+      selectedFontId = currentSettings.fontId;
+      const fontFamily = getFontFamily(currentSettings.fontId);
+
+      root.style.setProperty('--lyric-font', fontFamily);
+      root.style.setProperty('--lyric-current-color', currentSettings.currentColor);
+      root.style.setProperty('--lyric-next-color', currentSettings.nextColor);
+      root.style.setProperty('--panel-opacity', String(currentSettings.opacity));
+      root.style.setProperty('--accent', currentSettings.currentColor);
+
+      currentColorInput.value = rgbaToHex(currentSettings.currentColor);
+      nextColorInput.value = rgbaToHex(currentSettings.nextColor);
+      opacityRange.value = Math.round(currentSettings.opacity * 100);
+      opacityValue.textContent = Math.round(currentSettings.opacity * 100) + '%';
+      renderFontChips();
+    }
+
+    function readFormSettings() {
+      return {
+        fontId: selectedFontId,
+        currentColor: currentColorInput.value,
+        nextColor: hexToRgba(nextColorInput.value, 0.45),
+        opacity: Number(opacityRange.value) / 100,
+      };
+    }
+
+    function measureSettingsPanelHeight() {
+      settingsPanel.classList.add('measuring', 'open');
+      const height = settingsPanel.offsetHeight;
+      settingsPanel.classList.remove('open', 'measuring');
+      return height;
+    }
+
+    async function persistSettings(settings) {
+      const saved = await window.lyricsApi.saveSettings(settings);
+      applySettings(saved);
+    }
+
+    function updateLyricScale() {
+      if (lyricScaleLocked) return;
+      const width = content.clientWidth;
+      const height = content.clientHeight;
+      const base = Math.max(18, Math.min(52, Math.min(width, height) * 0.18));
+      const next = Math.max(12, Math.round(base * 0.58));
+      const empty = Math.max(13, Math.round(base * 0.62));
+      const metaSize = Math.max(11, Math.round(base * 0.48));
+
+      root.style.setProperty('--lyric-current-size', base + 'px');
+      root.style.setProperty('--lyric-next-size', next + 'px');
+      root.style.setProperty('--lyric-empty-size', empty + 'px');
+      root.style.setProperty('--lyric-meta-size', metaSize + 'px');
+      root.style.setProperty('--lyric-gap', Math.max(4, Math.round(base * 0.22)) + 'px');
+      root.style.setProperty('--lyric-padding', Math.max(4, Math.round(base * 0.28)) + 'px');
+    }
+
+    function render(data) {
+      const title = [data.title, data.artist].filter(Boolean).join(' - ') || '等待播放…';
+      meta.textContent = title;
+
+      if (!data.currentLine && !data.nextLine) {
+        panel.classList.toggle('paused', !!data.paused);
+        content.innerHTML = '<div class="empty">' + (data.title ? '暂无歌词' : '播放音乐后显示歌词') + '</div>';
+        return;
+      }
+
+      panel.classList.toggle('paused', !!data.paused);
+      content.innerHTML =
+        '<div class="current">' + escapeHtml(data.currentLine || '…') + '</div>' +
+        '<div class="next">' + escapeHtml(data.nextLine || '') + '</div>';
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function setPinState(pinned) {
+      pinBtn.classList.toggle('pinned', pinned);
+      pinBtn.title = pinned ? '取消置顶' : '置顶';
+      pinBtn.textContent = pinned ? '📍' : '📌';
+    }
+
+    function lockLyricsBody() {
+      if (lyricsBodyHeight !== null) return;
+      lyricsBodyHeight = lyricsBody.offsetHeight;
+      panel.style.setProperty('--lyrics-body-lock-h', lyricsBodyHeight + 'px');
+      panel.classList.add('lyrics-locked');
+    }
+
+    function unlockLyricsBody() {
+      panel.classList.remove('lyrics-locked');
+      panel.style.removeProperty('--lyrics-body-lock-h');
+      panel.style.removeProperty('--settings-panel-h');
+      lyricsBodyHeight = null;
+    }
+
+    async function setSettingsOpen(open) {
+      if (open) {
+        if (settingsPanel.classList.contains('open')) return;
+        lockLyricsBody();
+        lyricScaleLocked = true;
+
+        const panelHeight = measureSettingsPanelHeight();
+        panel.style.setProperty('--settings-panel-h', panelHeight + 'px');
+        settingsPanel.classList.add('open');
+        settingsBtn.classList.add('active');
+
+        await window.lyricsApi.setSettingsOpen(true, panelHeight);
+
+        lyricScaleLocked = false;
+        updateLyricScale();
+        return;
+      }
+
+      if (!settingsPanel.classList.contains('open')) return;
+      settingsBtn.classList.remove('active');
+      lyricScaleLocked = true;
+      await window.lyricsApi.setSettingsOpen(false);
+      settingsPanel.classList.remove('open');
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      unlockLyricsBody();
+      lyricScaleLocked = false;
+      updateLyricScale();
+    }
+
+    async function initFonts() {
+      fontList = await window.lyricsApi.getFontList();
+    }
+
+    async function init() {
+      await initFonts();
+      const settings = await window.lyricsApi.getSettings();
+      applySettings(settings);
+      updateLyricScale();
+    }
+
+    updateLyricScale();
+    new ResizeObserver(updateLyricScale).observe(content);
+
+    window.lyricsApi.onUpdate(render);
+    window.lyricsApi.onPinState(setPinState);
+    window.lyricsApi.onSettingsUpdate(applySettings);
+    window.lyricsApi.onSettingsPanelClose(() => {
+      settingsPanel.classList.remove('open');
+      settingsBtn.classList.remove('active');
+      unlockLyricsBody();
+      lyricScaleLocked = false;
+      updateLyricScale();
+    });
+    window.lyricsApi.getPinState().then(setPinState);
+    init();
+
+    closeBtn.addEventListener('click', () => window.lyricsApi.close());
+    pinBtn.addEventListener('click', async () => {
+      const pinned = await window.lyricsApi.togglePin();
+      setPinState(pinned);
+    });
+
+    settingsBtn.addEventListener('click', () => {
+      setSettingsOpen(!settingsPanel.classList.contains('open'));
+    });
+
+    closeSettingsBtn.addEventListener('click', () => {
+      setSettingsOpen(false);
+    });
+
+    opacityRange.addEventListener('input', () => {
+      opacityValue.textContent = opacityRange.value + '%';
+      persistSettings(readFormSettings());
+    });
+
+    currentColorInput.addEventListener('input', () => persistSettings(readFormSettings()));
+    nextColorInput.addEventListener('input', () => persistSettings(readFormSettings()));
+
+    resetSettingsBtn.addEventListener('click', () => {
+      persistSettings({ ...DEFAULT_SETTINGS });
+    });
+  </script>
+</body>
+</html>
